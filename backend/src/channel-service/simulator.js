@@ -1,52 +1,25 @@
 // ─────────────────────────────────────────────────────────────
 // src/channel-service/simulator.js
 // Message delivery simulator — the "Twilio" of our CRM
-//
-// Simulates the full lifecycle of each message:
-//   pending → sent → delivered → opened → clicked (or failed)
-//
-// Each stage has realistic delays and probabilistic outcomes:
-//   Sent:      100% (always sends)         0.5–2s delay
-//   Delivered:  95% (5% fail)              1–3s after sent
-//   Opened:     40% (of delivered)         2–10s after delivered
-//   Clicked:    20% (of opened)            3–15s after opened
-//
-// All messages in a batch run in PARALLEL — just like real
-// SMS/WhatsApp providers process a batch concurrently.
 // ─────────────────────────────────────────────────────────────
 
-// CRM webhook URL (where we send delivery callbacks)
 const CRM_CALLBACK_URL = process.env.CRM_CALLBACK_URL
   || 'http://localhost:3000/api/webhooks/channel-events';
 
 const MAX_RETRIES    = 3;
-const RETRY_BASE_MS  = 500; // exponential backoff base
+const RETRY_BASE_MS  = 500;
 
-// ── Probability helpers ───────────────────────────────────────
-
-/** Returns a random integer between min and max (inclusive, in ms) */
+// Probability helpers
 const randomDelay = (minSec, maxSec) =>
   Math.floor(Math.random() * (maxSec - minSec) * 1000) + minSec * 1000;
 
-/** 95% delivery rate */
 const shouldDeliver = () => Math.random() < 0.95;
-
-/** 40% open rate (of delivered) */
 const shouldOpen = () => Math.random() < 0.40;
-
-/** 20% click rate (of opened) */
 const shouldClick = () => Math.random() < 0.20;
-
-/** Promise-based sleep */
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
-
-// ── Callback sender with retry ────────────────────────────────
 
 /**
  * Sends a delivery event callback to the main CRM webhook.
- * Retries up to 3 times with exponential backoff.
- *
- * @param {Object} data - { campaign_id, customer_id, phone, event_type, timestamp }
  */
 async function sendCallback(data) {
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
@@ -70,7 +43,7 @@ async function sendCallback(data) {
       const reason = err.name === 'AbortError' ? 'timeout' : err.message;
       if (attempt < MAX_RETRIES) {
         console.warn(`   ⚠️  Callback failed (${reason}), retry ${attempt}/${MAX_RETRIES}`);
-        await sleep(RETRY_BASE_MS * attempt); // exponential backoff
+        await sleep(RETRY_BASE_MS * attempt);
       } else {
         console.error(`   ❌ Callback failed after ${MAX_RETRIES} retries (${reason})`);
       }
@@ -78,16 +51,8 @@ async function sendCallback(data) {
   }
 }
 
-// ── Single message lifecycle simulator ────────────────────────
-
 /**
  * Simulates the full delivery lifecycle for ONE message.
- * Sends callbacks to the CRM webhook at each stage.
- *
- * @param {string} campaignId
- * @param {Object} message - { customer_id, phone, message, channel }
- * @param {number} index - Message number (for logging)
- * @returns {Object} Summary: { delivered, opened, clicked, failed }
  */
 async function simulateDelivery(campaignId, message, index) {
   const tag = `  #${String(index + 1).padStart(3)}`;
@@ -100,57 +65,103 @@ async function simulateDelivery(campaignId, message, index) {
     event_type:   eventType,
     channel:      message.channel,
     timestamp:    new Date().toISOString(),
+    message_id:   message.message_id || null,
   });
 
-  // ── Stage 1: SENT (100% — always sends) ─────────────────
-  await sleep(randomDelay(0.5, 2));
-  await sendCallback(buildCallback('sent'));
-  result.sent = true;
-  console.log(`${tag} ✉️  sent      → ${message.phone}`);
+  const channel = (message.channel || 'email').toLowerCase();
 
-  // ── Stage 2: DELIVERED (95%) or FAILED (5%) ─────────────
-  await sleep(randomDelay(1, 3));
+  if (channel === 'sms') {
+    // ── SMS Flow ──
+    // Delay: 2-5s to send
+    await sleep(randomDelay(2, 5));
+    await sendCallback(buildCallback('sent'));
+    result.sent = true;
+    console.log(`${tag} ✉️  SMS sent      → ${message.phone}`);
 
-  if (!shouldDeliver()) {
-    // 5% fail — message never reaches the customer
-    await sendCallback(buildCallback('failed'));
-    result.failed = true;
-    console.log(`${tag} ❌ failed    → ${message.phone}`);
-    return result; // stop here
+    // Delay: 1-3s to deliver or fail
+    await sleep(randomDelay(1, 3));
+    if (!shouldDeliver()) {
+      await sendCallback(buildCallback('failed'));
+      result.failed = true;
+      console.log(`${tag} ❌ SMS failed    → ${message.phone}`);
+      return result;
+    }
+    await sendCallback(buildCallback('delivered'));
+    result.delivered = true;
+    console.log(`${tag} 📱 SMS delivered → ${message.phone}`);
+
+  } else if (channel === 'whatsapp') {
+    // ── WhatsApp Flow ──
+    // Delay: 1-3s to deliver
+    await sleep(randomDelay(1, 3));
+    await sendCallback(buildCallback('sent'));
+    await sendCallback(buildCallback('delivered'));
+    result.sent = true;
+    result.delivered = true;
+    console.log(`${tag} 💬 WA delivered  → ${message.phone}`);
+
+    // Simulate WhatsApp Read Progression (75% read rate)
+    if (Math.random() < 0.75) {
+      await sleep(10000); // 10s delay
+      await sendCallback(buildCallback('read'));
+      result.opened = true;
+      console.log(`${tag} 💬 WA read       → ${message.phone}`);
+    }
+
+  } else if (channel === 'email') {
+    // ── Email Flow ──
+    // Delay: 10-30s to deliver
+    await sleep(randomDelay(10, 30));
+    await sendCallback(buildCallback('sent'));
+    await sendCallback(buildCallback('delivered'));
+    result.sent = true;
+    result.delivered = true;
+    console.log(`${tag} 📧 Email deliv   → ${message.phone}`);
+
+    // Open/Click Simulation
+    if (shouldOpen()) {
+      await sleep(randomDelay(5, 15));
+      await sendCallback(buildCallback('opened'));
+      result.opened = true;
+      console.log(`${tag} 👀 Email opened  → ${message.phone}`);
+
+      if (shouldClick()) {
+        await sleep(randomDelay(3, 10));
+        await sendCallback(buildCallback('clicked'));
+        result.clicked = true;
+        console.log(`${tag} 🖱️  Email clicked → ${message.phone}`);
+      }
+    }
+
+  } else if (channel === 'rcs') {
+    // ── RCS Flow ──
+    // Delay: 1-2s to deliver
+    await sleep(randomDelay(1, 2));
+    await sendCallback(buildCallback('sent'));
+    await sendCallback(buildCallback('delivered'));
+    result.sent = true;
+    result.delivered = true;
+    console.log(`${tag} 📱 RCS delivered → ${message.phone}`);
+
+    // RCS auto-opens
+    await sendCallback(buildCallback('opened'));
+    result.opened = true;
+    console.log(`${tag} 👀 RCS opened    → ${message.phone}`);
+
+    // 30% click rate on action card
+    if (Math.random() < 0.30) {
+      await sleep(randomDelay(3, 8));
+      await sendCallback(buildCallback('clicked'));
+      result.clicked = true;
+      console.log(`${tag} 🖱️  RCS clicked   → ${message.phone}`);
+    }
   }
-
-  await sendCallback(buildCallback('delivered'));
-  result.delivered = true;
-  console.log(`${tag} 📱 delivered → ${message.phone}`);
-
-  // ── Stage 3: OPENED (40% of delivered) ──────────────────
-  if (!shouldOpen()) return result; // sits unread in inbox
-
-  await sleep(randomDelay(2, 10));
-  await sendCallback(buildCallback('opened'));
-  result.opened = true;
-  console.log(`${tag} 👀 opened   → ${message.phone}`);
-
-  // ── Stage 4: CLICKED (20% of opened) ────────────────────
-  if (!shouldClick()) return result; // read but didn't click
-
-  await sleep(randomDelay(3, 15));
-  await sendCallback(buildCallback('clicked'));
-  result.clicked = true;
-  console.log(`${tag} 🖱️  clicked  → ${message.phone}`);
 
   return result;
 }
 
-// ── Batch simulation orchestrator ─────────────────────────────
-
 /**
- * Processes all messages for a campaign IN PARALLEL.
- * Returns immediately after kicking off — each message runs
- * on its own async timeline.
- *
- * @param {string} campaignId
- * @param {Object[]} messages - Array of { customer_id, phone, message, channel }
+ * Processes all messages for a campaign in parallel.
  */
 async function simulateBatch(campaignId, messages) {
   console.log(`\n${'─'.repeat(55)}`);
@@ -160,7 +171,6 @@ async function simulateBatch(campaignId, messages) {
 
   const startTime = Date.now();
 
-  // Fire ALL messages in parallel (like a real provider would)
   const promises = messages.map((msg, i) =>
     simulateDelivery(campaignId, msg, i).catch(err => {
       console.error(`  #${i + 1} ❌ Simulation error: ${err.message}`);
@@ -168,7 +178,6 @@ async function simulateBatch(campaignId, messages) {
     })
   );
 
-  // Wait for all to complete, then log summary
   const results = await Promise.all(promises);
 
   const summary = results.reduce(
@@ -187,9 +196,9 @@ async function simulateBatch(campaignId, messages) {
   console.log(`\n${'─'.repeat(55)}`);
   console.log(`✅ Campaign ${campaignId} simulation complete (${elapsed}s)`);
   console.log(`   📨 Sent: ${summary.sent}/${messages.length}`);
-  console.log(`   📱 Delivered: ${summary.delivered} (${((summary.delivered / messages.length) * 100).toFixed(0)}%)`);
-  console.log(`   👀 Opened: ${summary.opened} (${messages.length > 0 ? ((summary.opened / messages.length) * 100).toFixed(0) : 0}%)`);
-  console.log(`   🖱️  Clicked: ${summary.clicked} (${messages.length > 0 ? ((summary.clicked / messages.length) * 100).toFixed(0) : 0}%)`);
+  console.log(`   📱 Delivered: ${summary.delivered}`);
+  console.log(`   👀 Opened: ${summary.opened}`);
+  console.log(`   🖱️  Clicked: ${summary.clicked}`);
   console.log(`   ❌ Failed: ${summary.failed}`);
   console.log(`${'─'.repeat(55)}\n`);
 

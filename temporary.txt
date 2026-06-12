@@ -1,4 +1,10 @@
-const { GoogleGenerativeAI } = require('@google/generative-ai'); const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY); const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' }); const SYSTEM_PROMPT = Return ONLY valid JSON. User describes customers. Convert the request into: { "persona":"", "recency_min_days":null, "recency_max_days":null, "frequency_min":null, "frequency_max":null, "monetary_min":null, "monetary_max":null, "reasoning":"" } Example: Input: customers who havent bought in 30 days Output: { "persona":"Inactive Customers", "recency_min_days":31, "recency_max_days":null, "frequency_min":1, "frequency_max":null, "monetary_min":0, "monetary_max":null, "reasoning":"Customers inactive for over 30 days." } ; async function extractRFM(userMessage) { try { console.log(\n🤖 Gemini extracting RFM from: "${userMessage}"); console.log("STEP A - About to call Gemini API"); const result = await model.generateContent({ contents: [ { role: 'user', parts: [ { text: ${SYSTEM_PROMPT}\n\nMarketer says: "${userMessage}"\n\nRespond with JSON only. } ], }, ], generationConfig: { temperature: 0.1, maxOutputTokens:200 , responseMimeType: "application/json" }, }); console.log("FINISH REASON:"); console.log(result.response.candidates?.[0]?.finishReason); console.log("USAGE:"); console.log(result.response.usageMetadata); console.log("STEP B - Gemini API returned"); let responseText = result.response.text().trim(); console.log("RAW RESPONSE LENGTH:"); console.log(responseText.length); console.log("RAW RESPONSE:"); console.log(JSON.stringify(responseText)); // Remove markdown if present if (responseText.includes('
+const { GoogleGenerativeAI } = require('@google/generative-ai'); const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY); 
+const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' }); 
+const SYSTEM_PROMPT = Return ONLY valid JSON. User describes customers. Convert the request into: { "persona":"", "recency_min_days":null, "recency_max_days":null, "frequency_min":null, "frequency_max":null, "monetary_min":null, "monetary_max":null, "reasoning":"" } Example: Input: customers who havent bought in 30 days Output: { "persona":"Inactive Customers", "recency_min_days":31, "recency_max_days":null, "frequency_min":1, "frequency_max":null, "monetary_min":0, "monetary_max":null, "reasoning":"Customers inactive for over 30 days." } ; 
+async function extractRFM(userMessage) { 
+    try { console.log(\n🤖 Gemini extracting RFM from: "${userMessage}"); 
+        console.log("STEP A - About to call Gemini API"); 
+        const result = await model.generateContent({ contents: [ { role: 'user', parts: [ { text: ${SYSTEM_PROMPT}\n\nMarketer says: "${userMessage}"\n\nRespond with JSON only. } ], }, ], generationConfig: { temperature: 0.1, maxOutputTokens:200 , responseMimeType: "application/json" }, }); console.log("FINISH REASON:"); console.log(result.response.candidates?.[0]?.finishReason); console.log("USAGE:"); console.log(result.response.usageMetadata); console.log("STEP B - Gemini API returned"); let responseText = result.response.text().trim(); console.log("RAW RESPONSE LENGTH:"); console.log(responseText.length); console.log("RAW RESPONSE:"); console.log(JSON.stringify(responseText)); // Remove markdown if present if (responseText.includes('
 ')) {
       responseText = responseText
         .replace(/
@@ -54,3 +60,5 @@ json\n?/g, '') .replace(/
 }
 
 module.exports = { extractRFM }; instead of extract rfm
+
+

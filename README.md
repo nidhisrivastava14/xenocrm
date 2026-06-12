@@ -1,197 +1,195 @@
-# Xeno Mini CRM — Phase 1: Database Setup
+# Xeno Mini CRM — AI-Native Multi-Channel Campaign Studio
 
-> **Phase 1 of 4** · Foundation · PostgreSQL Schema + Seed Data
-
----
-
-## What's in this folder
-
-| File | Purpose |
-|---|---|
-| `schema.sql` | PostgreSQL schema — 5 tables, FK constraints, indexes, triggers |
-| `seed.js` | Node.js seeder — 500 Indian customers, ~2000+ realistic orders |
-| `package.json` | Dependencies: `pg`, `@faker-js/faker`, `dotenv` |
-| `.env.example` | Template for your DB connection string |
-| `.gitignore` | Keeps `.env` and `node_modules` out of git |
+Xeno Mini CRM is an enterprise-grade, data-first campaign orchestration platform designed for modern marketers. By combining generative AI, real-time WebSocket communication, and robust database transaction safety, it enables automated customer segmentation, multi-channel messaging (SMS, WhatsApp, Email, RCS), and hardened order revenue attribution.
 
 ---
 
-## Step 1 — Create the schema in Supabase
+## ✨ Features
 
-1. Go to [supabase.com](https://supabase.com) → your project
-2. Open **SQL Editor** (left sidebar)
-3. Click **New Query**
-4. Paste the entire contents of `schema.sql`
-5. Click **Run** (▶)
+### 🤖 1. AI-Native Segment & Message Drafts (Gemini API)
 
-You should see 5 new tables in the **Table Editor**:
-- `customers`
-- `orders`
-- `campaigns`
-- `messages`
-- `campaign_stats`
+- Marketers describe target audiences in plain English (e.g., _"customers who haven't bought in 30 days"_).
+- The backend leverages the **Gemini 2.0 Flash** model to parse user intent into structured RFM (Recency, Frequency, Monetary) SQL queries.
+- AI drafts channel-appropriate message variants tailored to **Urgent**, **Value**, and **Personal** communication tones.
+
+### 🔌 2. Real-Time Campaign Dashboard (Socket.io)
+
+- Broadcasts campaign delivery dispatches and customer read/click interactions in real time.
+- Features responsive metrics, delivery funnel tracking, and a live activity feed.
+- Clean visual redesign (Intercom/Mixpanel aesthetics) with dark/light mode, custom scrollbars, and Lucide icons.
+
+### 📱 3. Multi-Channel Support & Fallback Routing
+
+- Orchestrates message delivery over **SMS**, **WhatsApp**, **Email**, and **RCS**.
+- **Smart Fallbacks**: Automatically falls back to secondary channels if contact fields are missing (e.g., drops down from WhatsApp to Email if a phone number is unavailable).
+- Enforces custom channel formatting (e.g., auto-stripping emojis for SMS, bolding discount codes for WhatsApp).
+
+### 🛒 4. Hardened Order Attribution System (Last-Touch, 48hr Window)
+
+- Traces customer purchases back to campaigns using a strict **last-touch, 48-hour window** model.
+- **Atomic Transactions & Savepoints**: Combines customer lookup, campaign attribution, and order inserts in a single PostgreSQL transaction. Leverages `SAVEPOINT` so that any lookup failure falls back gracefully to an `organic` sale without blocking the order insert.
+- **Early-Return Idempotency**: Client-provided idempotency keys check for duplicates first thing, preventing duplicate entries and conserving database locks.
+- **Divide-by-Zero Guards**: Built-in math safety guards on campaigns stats (`avg_order_value`, `revenue_per_message`, `conversion_rate`) returning clean zeros instead of crashing the dashboard.
+- **UUID & Input Validations**: Rejects invalid date formats, future dates, negative prices, and invalid UUID shapes early.
 
 ---
 
-## Step 2 — Set up your local environment
+## 🏗️ Project Architecture
+
+```mermaid
+graph TD
+    subgraph Frontend [React Client - Vite]
+        UI[CampaignDashboard / ChatInterface] -->|HTTP / WebSocket| Server
+    end
+
+    subgraph Backend [Express API Server]
+        Server[src/index.js] --> Chat[routes/chat.js]
+        Server --> Orders[routes/orders.js]
+        Server --> Campaigns[routes/campaigns.js]
+        Server --> Webhooks[routes/webhooks.js]
+
+        Chat -->|Gemini API| Gemini[Gemini SDK]
+        Campaigns -->|Dispatches| ChannelService[channel-service]
+        Orders -->|Attribution Logic| Attr[services/attributionService.js]
+        Webhooks -->|Callbacks| WebhookSvc[services/webhookService.js]
+    end
+
+    subgraph Database [PostgreSQL - Supabase]
+        Attr -->|Row Locks & Insert| Postgres[(Postgres DB)]
+        WebhookSvc -->|Recalculate Counters| Postgres
+    end
+```
+
+---
+
+## 🛠️ Recent Upgrades & Hardening
+
+### 🎨 Frontend visual & Functional Upgrades
+
+- **SaaS Design Language**: Replaced all emojis with professional SVG icons using `lucide-react`. Transitioned to a clean, data-first theme using dark slate (`#0F172A`/`#1E293B`) and professional blue (`#3B82F6`) accents.
+- **Draft Termination (Cancel Campaign)**: Added a "Cancel Campaign" button on the **Segment Preview** and **Message Draft** steps. Users can immediately reset the flow to start over with a new prompt if they made a mistake (e.g., entered the wrong audience criteria), without having to generate all messages first.
+- **Scrollbar & Layout Polish**:
+  - Set a default minimum height on preview containers so scrollbars trigger correctly.
+  - Added `overscroll-behavior: contain` to prevent mouse scrolls from leaking out and scrolling the main page layout.
+  - Widened the scrollbar grip to `10px` for smooth, responsive scrolling.
+- **Attributed Orders Highlight**: Displays attributed campaign sales inside the real-time activity feed with a green highlight and shopping cart indicators.
+- **Organic Revenue Section**: Added an "Organic Revenue" panel to the dashboard to contextualize campaign sales against total platform revenue.
+
+### 🛡️ Backend Reliability & Concurrency Hardening
+
+- **Transaction Savepoints**: Wrapped attribution checks in a SQL `SAVEPOINT` so that any database-level attribution exceptions (such as locked tables or query issues) roll back cleanly to allow the sale to persist as an `organic` purchase, rather than rejecting the order.
+- **Idempotency Keys**: Placed the idempotency verification step at the absolute beginning of the route handler. Duplicate orders return immediately, saving database customer validation and row lock resources.
+- **UUID Formatting Guard**: Standardized client customer input validations using regular expressions for UUID shapes to avoid sending invalid UUID syntax queries to the database.
+- **Row-Level Locking**: Utilized `SELECT ... FOR SHARE` on customer checks and `SELECT ... FOR UPDATE` on message attribution checks to secure resource locks in a deterministic order, avoiding database deadlocks.
+
+---
+
+## 📦 Technology Stack
+
+- **Frontend**: React.js (Vite), Vanilla CSS (Design Tokens, Dark/Light Mode), Lucide Icons, Socket.io-client.
+- **Backend**: Node.js, Express.js, Socket.io (WebSocket Server), dotenv.
+- **Database**: Supabase PostgreSQL (`pg` pool, transactions, row-locking).
+- **AI Service**: Google Gemini API SDK (`@google/generative-ai` v0.24.1).
+
+---
+
+## 🛠️ Installation & Local Setup
+
+### 1. Database Schema Configuration
+
+1. Go to [supabase.com](https://supabase.com) and create a new project.
+2. Navigate to **SQL Editor** (left sidebar) → **New Query**.
+3. Paste the contents of `backend/schema.sql` and run (▶) to initialize the tables (`customers`, `orders`, `campaigns`, `messages`, `campaign_stats`).
+
+### 2. Environment Variables Configuration
+
+Create a `.env` file inside the `backend` directory based on the `.env.example` template:
+
+```env
+PORT=3000
+DATABASE_URL=postgresql://postgres:[YOUR-PASSWORD]@db.[PROJECT-REF].supabase.co:5432/postgres
+GEMINI_API_KEY=AIzaSy...
+```
+
+### 3. Install Dependencies
 
 ```bash
-# In this directory
+# From the root folder:
+
+# Install backend dependencies
+cd backend
 npm install
 
-# Copy the env template
-copy .env.example .env
+# Install frontend dependencies
+cd ../frontend
+npm install
 ```
 
-Open `.env` and paste your Supabase connection string:
-```
-DATABASE_URL=postgresql://postgres:[YOUR-PASSWORD]@db.[PROJECT-REF].supabase.co:5432/postgres
-```
-
-> **Where to find it:** Supabase Dashboard → Settings → Database → Connection String → URI tab
-
----
-
-## Step 3 — Run the seeder
+### 4. Database Migrations & Seeding
 
 ```bash
-# Standard run (appends to existing data)
-npm run seed
+# In the backend directory:
 
-# Fresh run (wipes customers + orders first, then re-seeds)
+# Run migrations (Add Order Attribution tables and structures)
+node db/migrations/run.js
+
+# Seed customer profiles and mock transactions
 npm run seed:fresh
 ```
 
-Expected output:
+---
+
+## 💻 Running the Application
+
+To run the application locally, you will need to open **three terminal windows**:
+
+### Terminal 1: Backend API Server
+
+```bash
+cd backend
+npm run dev
 ```
-╔══════════════════════════════════════════════════════╗
-║       Xeno Mini CRM — Phase 1 Database Seeder       ║
-╚══════════════════════════════════════════════════════╝
 
-🔌 Connected to PostgreSQL
+### Terminal 2: Multi-Channel Simulator
 
-📋 Generating customers...
-  ✓ 100/500 customers inserted
-  ✓ 200/500 customers inserted
-  ...
-  ✅ All 500 customers inserted
+Simulates customer actions like message delivery, clicks, and read events:
 
-🛍️  Generating orders...
-  ✓ Orders generated for 100/500 customers
-  ...
-  ✅ All orders inserted
-
-📊 RFM Distribution Summary:
-────────────────────────────────────────────────────────────
-  Recent / High Freq / High Value          87 customers  █████████████████
-  Recent / High Freq / Mid Value           64 customers  ████████████
-  Dormant / High Freq / High Value         51 customers  ██████████
-  ...
-
-╔══════════════════════════════════════════════════════╗
-║  ✅ Seeded 500 customers and  2247 orders successfully  ║
-╚══════════════════════════════════════════════════════╝
+```bash
+cd backend
+npm run channel:dev
 ```
+
+### Terminal 3: Frontend Client
+
+```bash
+cd frontend
+npm run dev
+```
+
+Open [http://localhost:5173](http://localhost:5173) in your browser.
 
 ---
 
-## Step 4 — Verify in Supabase
+## 🧪 Running Tests
 
-Run these in the SQL Editor to confirm:
+To verify that the order validation, transaction savepoints, idempotency checks, and campaign analytics math work flawlessly, run the automated integration test suite:
 
-```sql
--- Should return 500
-SELECT COUNT(*) FROM customers;
-
--- Should return ~2000–3500
-SELECT COUNT(*) FROM orders;
-
--- Quick RFM check
-SELECT
-  CASE
-    WHEN MAX(o.created_at) >= NOW() - INTERVAL '30 days' THEN 'Recent'
-    WHEN MAX(o.created_at) >= NOW() - INTERVAL '90 days' THEN 'Medium'
-    ELSE 'Dormant'
-  END AS recency_bucket,
-  COUNT(DISTINCT c.id) AS customers
-FROM customers c
-JOIN orders o ON o.customer_id = c.id
-GROUP BY recency_bucket;
+```bash
+# Inside the backend folder:
+node __tests__/attribution.test.js
 ```
+
+**What the tests verify:**
+
+1. **Service Level**: Proper attribution matching within 48h click/open status, last-touch priorities, and organic fallbacks.
+2. **API Level**:
+   - Invalid UUID formats or non-existent Customer IDs return `404` without database query crashes.
+   - Negative or zero amount purchases return validation `400`.
+   - Repeated idempotency keys return the original order row and avoid duplicates.
+   - Campaign analytics for 0 sent/0 clicks campaigns return zeroed-out numbers instead of NaN/null values.
 
 ---
 
-## Database Schema
+## 📄 License
 
-```
-customers
-├── id (UUID PK)
-├── name
-├── email (UNIQUE)
-├── phone (+91-XXXXXXXXXX)
-├── city
-└── created_at
-
-orders
-├── id (UUID PK)
-├── customer_id (FK → customers)
-├── amount (₹ INR)
-├── product
-└── created_at
-
-campaigns
-├── id (UUID PK)
-├── segment_name (e.g. "Lapsed High-Value")
-├── message (AI-generated text)
-├── channel (whatsapp | email | sms)
-├── status (pending | sending | sent | completed)
-├── created_at
-└── updated_at
-
-messages
-├── id (UUID PK)
-├── campaign_id (FK → campaigns)
-├── customer_id (FK → customers)
-├── phone
-├── status (pending | sent | delivered | opened | clicked | failed)
-├── sent_at, delivered_at, opened_at, clicked_at (all nullable)
-└── created_at
-
-campaign_stats
-├── id (UUID PK)
-├── campaign_id (FK → campaigns, UNIQUE)
-├── total_sent / total_delivered / total_opened / total_clicked
-└── updated_at
-```
-
----
-
-## RFM Seed Distribution
-
-The seeder deliberately creates a realistic RFM spread:
-
-| Persona | Recency | Frequency | % of Customers |
-|---|---|---|---|
-| **Champions** | 0–30 days | 5+ orders | ~24% |
-| **New Customers** | 0–30 days | 1–3 orders | ~16% |
-| **Frequent Buyers** | 31–90 days | 4+ orders | ~14% |
-| **Potential Loyalists** | 31–90 days | 2–4 orders | ~16% |
-| **Lapsed High-Value** | 91–365 days | 3–7 orders | ~15% |
-| **At Risk** | 91–365 days | 1–2 orders | ~15% |
-
-This ensures later phases can demo **all** RFM personas convincingly.
-
----
-
-## What's next — Phase 2
-
-Phase 2 builds the **Express API + LLM chat endpoint**:
-
-```
-/api/chat        → Marketer intent → LLM → RFM params + persona + messages
-/api/campaigns/send → Creates campaign, triggers Channel Service
-/api/webhooks    → Receives delivery callbacks
-/api/campaigns/:id/stats → Live dashboard data
-```
-
-Stack: Node.js + Express + Groq (free LLM API)
+MIT License. Created for the Xeno AI Campaign Studio.

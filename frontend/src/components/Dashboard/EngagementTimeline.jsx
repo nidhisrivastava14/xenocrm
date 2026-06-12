@@ -1,20 +1,16 @@
 // ─────────────────────────────────────────────────────────────
 // src/components/Dashboard/EngagementTimeline.jsx
 // Visual funnel — animated bars showing the delivery cascade
-//
-//   Sent       ████████████████████████ 100%
-//   Delivered  ███████████████████░░░░░ 95.7%
-//   Opened     ██████████░░░░░░░░░░░░░ 38.3%
-//   Clicked    █░░░░░░░░░░░░░░░░░░░░░░ 6.4%
 // ─────────────────────────────────────────────────────────────
 
 import { calcRate } from '../../utils/calculations';
+import { BarChart2, AlertCircle, CheckCircle2 } from 'lucide-react';
 
 const STAGES = [
-  { key: 'total_sent',      label: 'Sent',      color: 'var(--blue-500)',   emoji: '📨' },
-  { key: 'total_delivered',  label: 'Delivered',  color: 'var(--green-500)',  emoji: '📱' },
-  { key: 'total_opened',    label: 'Opened',     color: 'var(--purple-500)', emoji: '👀' },
-  { key: 'total_clicked',   label: 'Clicked',    color: 'var(--orange-500)', emoji: '🖱️' },
+  { key: 'total_sent',       label: 'Sent',       color: 'var(--blue-500)' },
+  { key: 'total_delivered',  label: 'Delivered',  color: 'var(--green-500)' },
+  { key: 'total_opened',     label: 'Opened',     color: 'var(--purple-500)' },
+  { key: 'total_clicked',    label: 'Clicked',    color: 'var(--orange-500)' },
 ];
 
 /**
@@ -39,38 +35,55 @@ export default function EngagementTimeline({ stats, totalCustomers }) {
         fontWeight: 600,
         color: 'var(--text-secondary)',
         marginBottom: 14,
+        display: 'flex',
+        alignItems: 'center',
+        gap: '6px',
       }}>
-        📊 Engagement Funnel
+        <BarChart2 size={16} style={{ color: 'var(--blue-500)' }} />
+        Engagement Funnel
       </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        {STAGES.map(({ key, label, color, emoji }) => {
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {STAGES.map(({ key, label, color }) => {
           const value = stats[key] || 0;
           const pct = calcRate(value, maxVal);
           const barWidth = maxVal > 0 ? (value / maxVal) * 100 : 0;
 
           return (
-            <div key={key}>
+            <div key={key} style={{
+              paddingBottom: 8,
+              borderBottom: '1px solid var(--border-subtle)',
+            }}>
               {/* Label row */}
               <div style={{
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'space-between',
-                marginBottom: 4,
+                marginBottom: 6,
               }}>
                 <span style={{
                   fontSize: 'var(--font-xs)',
                   fontWeight: 500,
                   color: 'var(--text-secondary)',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '8px',
                 }}>
-                  {emoji} {label}
+                  <span style={{
+                    width: 8,
+                    height: 8,
+                    borderRadius: '50%',
+                    backgroundColor: color,
+                    display: 'inline-block'
+                  }} />
+                  {label}
                 </span>
                 <span style={{
                   fontSize: 'var(--font-xs)',
                   fontWeight: 600,
-                  color,
+                  color: 'var(--text-primary)',
                 }}>
-                  {value} ({pct}%)
+                  {value} <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>({pct}%)</span>
                 </span>
               </div>
 
@@ -79,7 +92,7 @@ export default function EngagementTimeline({ stats, totalCustomers }) {
                 width: '100%',
                 height: 8,
                 background: 'var(--bg-primary)',
-                borderRadius: 'var(--radius-full)',
+                borderRadius: '4px',
                 overflow: 'hidden',
                 border: '1px solid var(--border-subtle)',
               }}>
@@ -87,9 +100,8 @@ export default function EngagementTimeline({ stats, totalCustomers }) {
                   height: '100%',
                   width: `${barWidth}%`,
                   background: color,
-                  borderRadius: 'var(--radius-full)',
+                  borderRadius: '4px',
                   transition: 'width 0.6s cubic-bezier(0.16, 1, 0.3, 1)',
-                  boxShadow: value > 0 ? `0 0 8px ${color}40` : 'none',
                 }} />
               </div>
             </div>
@@ -105,12 +117,20 @@ export default function EngagementTimeline({ stats, totalCustomers }) {
           marginTop: 12,
           fontSize: '0.65rem',
           color: 'var(--text-muted)',
+          alignItems: 'center',
         }}>
-          <span>
-            {stats.total_failed > 0
-              ? `⚠️ ${stats.total_failed} failed`
-              : '✓ No failures'
-            }
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+            {stats.total_failed > 0 ? (
+              <>
+                <AlertCircle size={10} style={{ color: 'var(--red-500)' }} />
+                <span style={{ color: 'var(--red-500)' }}>{stats.total_failed} failed</span>
+              </>
+            ) : (
+              <>
+                <CheckCircle2 size={10} style={{ color: 'var(--green-500)' }} />
+                <span>No failures</span>
+              </>
+            )}
           </span>
           <span>
             {stats.total_delivered > 0

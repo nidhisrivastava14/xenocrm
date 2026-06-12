@@ -8,6 +8,7 @@
 // ─────────────────────────────────────────────────────────────
 
 import { useState, useCallback, useRef } from 'react';
+import { AlertCircle } from 'lucide-react';
 import ChatBubbles from './Chat/ChatBubbles';
 import ChatInput from './Chat/ChatInput';
 import SegmentPreview from './Segment/SegmentPreview';
@@ -111,6 +112,7 @@ export default function ChatInterface() {
             <SegmentPreview
               segment={segment}
               onContinue={handleGenerateMessages}
+              onCancel={handleNewCampaign}
               isGenerating={campaign.isGenerating}
             />
           )}
@@ -122,6 +124,7 @@ export default function ChatInterface() {
               selectedIndex={campaign.selectedVariant}
               onSelect={campaign.setSelectedVariant}
               onSend={handleSendCampaign}
+              onCancel={handleNewCampaign}
               isSending={campaign.isSending}
               customerCount={segment?.count || 0}
             />
@@ -139,7 +142,7 @@ export default function ChatInterface() {
           {/* Error display */}
           {campaign.error && (
             <div className="error-box">
-              ⚠️ {campaign.error}
+              <AlertCircle size={16} /> {campaign.error}
             </div>
           )}
 

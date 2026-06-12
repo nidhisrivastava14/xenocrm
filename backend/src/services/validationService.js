@@ -6,7 +6,7 @@
 // Returns structured errors so the API can return a clear 400.
 // ─────────────────────────────────────────────────────────────
 
-const VALID_CHANNELS = ['whatsapp', 'email', 'sms'];
+const VALID_CHANNELS = ['whatsapp', 'email', 'sms', 'rcs'];
 const VALID_TONES    = ['Urgent', 'Personal', 'Value'];
 const MAX_MESSAGE_LENGTH = 500;
 

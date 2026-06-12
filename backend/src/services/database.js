@@ -48,6 +48,33 @@ const MOCK_CUSTOMERS = [
   { id: 5, name: 'Sneha Reddy',   email: 'sneha@example.com',  phone: '+91-54321-09876', city: 'Hyderabad', order_count: 6,  total_spent: 15700.00, last_order: new Date('2026-05-02'), recency_days: 40 },
 ];
 
+const MOCK_CAMPAIGNS = [
+  {
+    id: 'mock-campaign-1',
+    segment_name: 'Champions Win-Back',
+    message: 'Hey Priya, we miss you! Here is a 20% discount on your next fashion order.',
+    channel: 'whatsapp',
+    status: 'completed',
+    created_at: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString()
+  },
+  {
+    id: 'mock-campaign-2',
+    segment_name: 'Lapsed High-Value Shoppers',
+    message: 'Hello Rahul, checkout our latest winter wear collection! Flat ₹500 off.',
+    channel: 'email',
+    status: 'completed',
+    created_at: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString()
+  },
+  {
+    id: 'mock-campaign-3',
+    segment_name: 'Active Shoppers Deal',
+    message: 'Hey, get 10% cashback on checkout today!',
+    channel: 'sms',
+    status: 'sending',
+    created_at: new Date(Date.now() - 1 * 60 * 60 * 1000).toISOString()
+  }
+];
+
 /**
  * Queries customers matching the given RFM parameters.
  * Returns mock data if DATABASE_URL is not configured.
@@ -185,4 +212,4 @@ async function healthCheck() {
   };
 }
 
-module.exports = { queryCustomersByRFM, healthCheck, pool, MOCK_CUSTOMERS };
+module.exports = { queryCustomersByRFM, healthCheck, pool, MOCK_CUSTOMERS, MOCK_CAMPAIGNS };

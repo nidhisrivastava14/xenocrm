@@ -68,12 +68,15 @@ router.post('/channel-events', async (req, res) => {
       io.emit('stats_update', {
         campaign_id,
         event_type,
+        channel: req.body.channel || 'email',
         stats: {
           total_sent:      result.stats.total_sent,
           total_delivered:  result.stats.total_delivered,
           total_opened:     result.stats.total_opened,
           total_clicked:    result.stats.total_clicked,
           total_failed:     result.stats.total_failed || 0,
+          time_to_open_seconds: result.stats.time_to_open_seconds || null,
+          by_channel:       result.stats.by_channel || null,
         },
         timestamp: new Date().toISOString(),
       });

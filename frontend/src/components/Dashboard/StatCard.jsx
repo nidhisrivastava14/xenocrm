@@ -1,46 +1,39 @@
 // ─────────────────────────────────────────────────────────────
 // src/components/Dashboard/StatCard.jsx
 // Single metric card — animates on value change
-//
-// Displays: icon, big number, percentage, denominator, timestamp
-// Pulses when the value updates via WebSocket.
 // ─────────────────────────────────────────────────────────────
 
 import { memo, useState, useEffect, useRef } from 'react';
-import { calcRate, timeAgo } from '../../utils/calculations';
+import { calcRate } from '../../utils/calculations';
 
 /**
  * @param {Object} props
- * @param {string} props.icon - Emoji icon
+ * @param {React.ComponentType} props.icon - Lucide icon component
  * @param {string} props.label - "Delivered", "Opened", etc.
  * @param {number} props.value - Current count
  * @param {number} props.denominator - Total to calculate percentage from
- * @param {string} props.denominatorLabel - "sent", "delivered", etc.
- * @param {string} props.accentColor - CSS color for the top bar
+ * @param {string} props.denominatorLabel - "total", "sent", etc.
+ * @param {string} props.accentColor - CSS color for the left bar
  * @param {string} props.cardClass - CSS class for accent styling
- * @param {string|null} props.lastUpdate - ISO timestamp
  */
 function StatCard({
-  icon,
+  icon: IconComponent,
   label,
   value,
   denominator,
   denominatorLabel,
   accentColor,
   cardClass,
-  lastUpdate,
 }) {
   const [isPulsing, setIsPulsing] = useState(false);
   const [displayValue, setDisplayValue] = useState(value);
   const prevValueRef = useRef(value);
-  const [tick, setTick] = useState(0);
 
   // ── Animate on value change ─────────────────────────────
   useEffect(() => {
     if (value !== prevValueRef.current) {
       setIsPulsing(true);
 
-      // Animate counting up from old value to new value
       const oldVal = prevValueRef.current;
       const diff = value - oldVal;
       const steps = Math.min(Math.abs(diff), 10);
@@ -67,41 +60,55 @@ function StatCard({
     }
   }, [value]);
 
-  // ── Tick the "time ago" display every second ────────────
-  useEffect(() => {
-    const interval = setInterval(() => setTick(t => t + 1), 1000);
-    return () => clearInterval(interval);
-  }, []);
-
   const rate = calcRate(value, denominator);
 
   return (
-    <div className={`stat-card ${cardClass} ${isPulsing ? 'pulse' : ''}`}>
-      <div className="stat-icon">{icon}</div>
-      <div className="stat-value" style={{ color: value > 0 ? accentColor : undefined }}>
+    <div className={`stat-card ${cardClass} ${isPulsing ? 'pulse' : ''}`} style={{
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'flex-start',
+      textAlign: 'left',
+      padding: '16px',
+      background: 'var(--bg-card)',
+      border: '1px solid var(--border-subtle)',
+      borderRadius: '8px',
+      position: 'relative',
+      overflow: 'hidden',
+      minHeight: '110px',
+      justifyContent: 'space-between',
+    }}>
+      <div style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        width: '100%',
+        fontSize: 'var(--font-xs)',
+        fontWeight: 600,
+        color: 'var(--text-secondary)',
+        textTransform: 'uppercase',
+        letterSpacing: '0.05em',
+      }}>
+        <span>{label}</span>
+        {IconComponent && <IconComponent size={16} style={{ color: 'var(--text-muted)' }} />}
+      </div>
+      
+      <div className="stat-value" style={{
+        fontSize: '32px',
+        fontWeight: 700,
+        color: 'var(--text-primary)',
+        margin: '8px 0',
+        lineHeight: 1,
+      }}>
         {displayValue}
       </div>
-      <div className="stat-label">{label}</div>
-      <div className="stat-rate" style={{ color: accentColor }}>
-        {rate}%
-      </div>
+
       <div style={{
-        fontSize: '0.7rem',
-        color: 'var(--text-muted)',
-        marginTop: 4,
+        fontSize: 'var(--font-xs)',
+        color: 'var(--text-secondary)',
+        fontWeight: 500,
       }}>
-        {value > 0 ? `${value} of ${denominator} ${denominatorLabel}` : `0 of ${denominator}`}
+        {rate}% <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>of {denominator} {denominatorLabel}</span>
       </div>
-      {lastUpdate && (
-        <div style={{
-          fontSize: '0.65rem',
-          color: 'var(--text-muted)',
-          marginTop: 2,
-          opacity: 0.7,
-        }}>
-          {timeAgo(lastUpdate)}
-        </div>
-      )}
     </div>
   );
 }

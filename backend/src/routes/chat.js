@@ -88,6 +88,7 @@ router.post('/', async (req, res) => {
 
   } catch (err) {
     console.error('\n❌ Chat endpoint error:', err.message);
+    console.error("Chat API Error:", err.message, err.response?.data || err);
 
     // Determine appropriate status code
     const status = err.message.includes('GEMINI_API_KEY')

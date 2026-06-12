@@ -1,16 +1,10 @@
 // ─────────────────────────────────────────────────────────────
 // src/services/campaignService.js
 // Campaign orchestration — DB transactions + Channel Service call
-//
-// This is the core "two-service" pattern:
-//   1. Write campaign + message records in a single transaction
-//   2. Fire-and-forget call to Channel Service (async delivery)
-//   3. Return immediately — don't block on delivery
-//
-// Mirrors real-world CRM architecture (Twilio, SendGrid, etc.)
 // ─────────────────────────────────────────────────────────────
 
-const { pool, MOCK_CUSTOMERS } = require('./database');
+const { pool, MOCK_CUSTOMERS, MOCK_CAMPAIGNS } = require('./database');
+const { queueCampaignMessages } = require('./campaignQueue');
 
 // Channel Service URL (separate Node service on port 5001)
 const CHANNEL_SERVICE_URL = process.env.CHANNEL_SERVICE_URL || 'http://localhost:5001';
@@ -29,28 +23,42 @@ const CHANNEL_SERVICE_URL = process.env.CHANNEL_SERVICE_URL || 'http://localhost
  * @param {string} params.message
  * @param {string} params.channel
  * @param {string[]} params.customer_ids - Array of customer UUIDs
- * @returns {Object} { campaignId, totalMessages, customerPhones }
+ * @returns {Object} { campaignId, totalMessages, customerPhones, dispatches }
  */
 async function createCampaign({ segment_name, persona, message, channel, customer_ids }) {
   if (!pool) {
-    console.log(`\n📨 [MOCK MODE] Creating campaign: "${segment_name}" via ${channel}`);
+    console.log(`\n📨 [MOCK MODE] Creating campaign: "${segment_name}" via preferred: ${channel}`);
     const campaignId = 'mock-' + Math.random().toString(36).substring(2, 15);
     const createdAt = new Date().toISOString();
     
     // Resolve mock customers for the IDs passed in
     const resolvedIds = (customer_ids && customer_ids.length > 0) ? customer_ids : [1, 2, 3, 4, 5];
-    const customerPhones = resolvedIds.map(id => {
-      const mockCust = MOCK_CUSTOMERS.find(c => c.id === id || String(c.id) === String(id)) || MOCK_CUSTOMERS[0];
-      return { id: mockCust.id, phone: mockCust.phone };
+    const targetCustomers = resolvedIds.map(id => {
+      return MOCK_CUSTOMERS.find(c => c.id === id || String(c.id) === String(id)) || MOCK_CUSTOMERS[0];
     });
+
+    // Queue messages (mock mode creates mock dispatches)
+    const dispatches = await queueCampaignMessages(null, campaignId, targetCustomers, message, persona);
     
-    console.log(`  ✓ [MOCK] Resolved ${customerPhones.length} mock customer phone numbers`);
+    console.log(`  ✓ [MOCK] Resolved ${dispatches.length} multi-channel mock customer messages`);
     console.log(`  ✅ [MOCK] Mock Campaign created: ${campaignId}`);
+
+    // Track mock campaign in memory list
+    if (MOCK_CAMPAIGNS) {
+      MOCK_CAMPAIGNS.push({
+        id: campaignId,
+        segment_name,
+        message,
+        channel,
+        status: 'sending',
+        created_at: createdAt
+      });
+    }
 
     // Store in mock stats store
     const { mockStatsStore } = require('./webhookService');
     mockStatsStore.set(campaignId, {
-      total_sent: customerPhones.length,
+      total_sent: dispatches.length,
       total_delivered: 0,
       total_opened: 0,
       total_clicked: 0,
@@ -64,8 +72,9 @@ async function createCampaign({ segment_name, persona, message, channel, custome
     return {
       campaignId,
       createdAt,
-      totalMessages: customerPhones.length,
-      customerPhones,
+      totalMessages: dispatches.length,
+      customerPhones: dispatches.map(d => ({ id: d.customer_id, phone: d.phone, email: d.email, channel: d.channel })),
+      dispatches,
     };
   }
 
@@ -75,7 +84,7 @@ async function createCampaign({ segment_name, persona, message, channel, custome
     await client.query('BEGIN');
 
     // ── Step 1: Insert campaign record ────────────────────────
-    console.log(`\n📨 Creating campaign: "${segment_name}" via ${channel}`);
+    console.log(`\n📨 Creating campaign: "${segment_name}" via preferred: ${channel}`);
 
     const campaignResult = await client.query(
       `INSERT INTO campaigns (segment_name, message, channel, status)
@@ -88,49 +97,27 @@ async function createCampaign({ segment_name, persona, message, channel, custome
     const createdAt  = campaignResult.rows[0].created_at;
     console.log(`  ✓ Campaign created: ${campaignId}`);
 
-    // ── Step 2: Fetch phone numbers for all target customers ──
-    const phoneResult = await client.query(
-      `SELECT id, phone FROM customers WHERE id = ANY($1::uuid[])`,
+    // ── Step 2: Fetch target customers details ────────────────
+    const customerResult = await client.query(
+      `SELECT id, name, email, phone FROM customers WHERE id = ANY($1::uuid[])`,
       [customer_ids]
     );
 
-    const customerPhones = phoneResult.rows; // [{ id, phone }, ...]
-    console.log(`  ✓ Resolved ${customerPhones.length} customer phone numbers`);
+    const targetCustomers = customerResult.rows;
+    console.log(`  ✓ Resolved ${targetCustomers.length} customer records`);
 
-    // Warn if some customer_ids weren't found (stale data)
-    if (customerPhones.length < customer_ids.length) {
-      const foundIds = new Set(customerPhones.map(c => c.id));
-      const missing = customer_ids.filter(id => !foundIds.has(id));
-      console.warn(`  ⚠️  ${missing.length} customer IDs not found in DB (skipped)`);
-    }
-
-    // ── Step 3: Batch insert message records ──────────────────
-    // One row per (campaign, customer) — tracks delivery lifecycle
-    if (customerPhones.length > 0) {
-      const values = [];
-      const placeholders = customerPhones.map((cust, i) => {
-        const base = i * 4;
-        values.push(campaignId, cust.id, cust.phone, 'pending');
-        return `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}::message_status)`;
-      });
-
-      await client.query(
-        `INSERT INTO messages (campaign_id, customer_id, phone, status)
-         VALUES ${placeholders.join(', ')}`,
-        values
-      );
-
-      console.log(`  ✓ Inserted ${customerPhones.length} message records`);
-    }
+    // ── Step 3: Queue messages (Router, Formatter, SQL batch) ──
+    const dispatches = await queueCampaignMessages(client, campaignId, targetCustomers, message, persona);
+    console.log(`  ✓ Queued ${dispatches.length} messages (including split parts)`);
 
     // ── Step 4: Initialize campaign_stats row ─────────────────
     await client.query(
       `INSERT INTO campaign_stats (campaign_id, total_sent, total_delivered, total_opened, total_clicked)
        VALUES ($1, $2, 0, 0, 0)`,
-      [campaignId, customerPhones.length]
+      [campaignId, dispatches.length]
     );
 
-    console.log(`  ✓ Campaign stats initialized (sent: ${customerPhones.length})`);
+    console.log(`  ✓ Campaign stats initialized (sent: ${dispatches.length})`);
 
     // ── Commit transaction ────────────────────────────────────
     await client.query('COMMIT');
@@ -139,8 +126,9 @@ async function createCampaign({ segment_name, persona, message, channel, custome
     return {
       campaignId,
       createdAt,
-      totalMessages: customerPhones.length,
-      customerPhones,
+      totalMessages: dispatches.length,
+      customerPhones: dispatches.map(d => ({ id: d.customer_id, phone: d.phone, email: d.email, channel: d.channel })),
+      dispatches,
     };
 
   } catch (err) {
@@ -160,21 +148,23 @@ async function createCampaign({ segment_name, persona, message, channel, custome
  * Builds the message payload for the Channel Service.
  *
  * @param {string} campaignId
- * @param {string} message - The campaign message text
- * @param {string} channel - "whatsapp" | "email" | "sms"
- * @param {{ id: string, phone: string }[]} customerPhones
+ * @param {string} message - Unused since individual dispatches are already formatted
+ * @param {string} channel - Preferred channel
+ * @param {Object[]} dispatches - Array of prepared message dispatches
  * @returns {Object} Payload ready for POST /simulate
  */
-function buildChannelPayload(campaignId, message, channel, customerPhones) {
+function buildChannelPayload(campaignId, message, channel, dispatches) {
   return {
     campaign_id: campaignId,
     channel,
-    callback_url: `${process.env.CRM_BASE_URL || 'http://localhost:3000'}/api/webhooks/channel-events`,
-    messages: customerPhones.map(cust => ({
-      customer_id: cust.id,
-      phone:       cust.phone,
-      message,
-      channel,
+    callback_url: `${process.env.CRM_CALLBACK_URL || process.env.CRM_BASE_URL || 'http://localhost:3000'}/api/webhooks/channel-events`,
+    messages: dispatches.map(d => ({
+      message_id:  d.message_id,
+      customer_id: d.customer_id,
+      phone:       d.phone,
+      email:       d.email,
+      message:     d.message,
+      channel:     d.channel,
     })),
   };
 }
@@ -186,11 +176,6 @@ function buildChannelPayload(campaignId, message, channel, customerPhones) {
 /**
  * Sends the campaign payload to the Channel Service for async delivery.
  *
- * This is FIRE-AND-FORGET:
- * - We don't await the full delivery
- * - Channel Service will call back with delivery events
- * - If the call fails, we log it but don't fail the campaign
- *
  * @param {Object} payload - From buildChannelPayload()
  */
 async function callChannelService(payload) {
@@ -200,8 +185,6 @@ async function callChannelService(payload) {
   console.log(`   Payload: ${payload.messages.length} messages for campaign ${payload.campaign_id}`);
 
   try {
-    // Fire-and-forget using native fetch (Node 18+)
-    // We use a short timeout — we don't need to wait for delivery
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 5000); // 5s timeout
 
@@ -222,8 +205,6 @@ async function callChannelService(payload) {
     }
 
   } catch (err) {
-    // DON'T throw — campaign is already created in DB.
-    // Channel Service might be down; messages stay in "pending" and can be retried.
     if (err.name === 'AbortError') {
       console.warn(`   ⚠️  Channel Service timeout (5s). Messages queued for retry.`);
     } else {

@@ -1,15 +1,10 @@
 // ─────────────────────────────────────────────────────────────
 // src/components/Dashboard/CampaignDashboard.jsx
 // Full campaign dashboard — the "wow factor" live view
-//
-// Composes: CampaignInfo + StatCards + EngagementTimeline
-// Powered by: useWebSocket for real-time updates
-//
-// This is what the marketer watches after clicking "Send":
-//   live counters ticking up, bars growing, status changing.
 // ─────────────────────────────────────────────────────────────
 
 import { useMemo } from 'react';
+import { Send, CheckCircle2, Eye, MousePointerClick, AlertCircle, Mail, Plus } from 'lucide-react';
 import CampaignInfo from './CampaignInfo';
 import StatCard from './StatCard';
 import EngagementTimeline from './EngagementTimeline';
@@ -40,16 +35,16 @@ export default function CampaignDashboard({
   // ── Stat card definitions ───────────────────────────────
   const statCards = useMemo(() => [
     {
-      icon: '📨',
+      icon: Send,
       label: 'Sent',
       value: ws.stats.total_sent || 0,
       denominator: totalCustomers,
       denominatorLabel: 'total',
-      accentColor: 'var(--blue-400)',
+      accentColor: 'var(--blue-500)',
       cardClass: 'sent',
     },
     {
-      icon: '📱',
+      icon: CheckCircle2,
       label: 'Delivered',
       value: ws.stats.total_delivered || 0,
       denominator: totalCustomers,
@@ -58,7 +53,7 @@ export default function CampaignDashboard({
       cardClass: 'delivered',
     },
     {
-      icon: '👀',
+      icon: Eye,
       label: 'Opened',
       value: ws.stats.total_opened || 0,
       denominator: ws.stats.total_delivered || 0,
@@ -67,7 +62,7 @@ export default function CampaignDashboard({
       cardClass: 'opened',
     },
     {
-      icon: '🖱️',
+      icon: MousePointerClick,
       label: 'Clicked',
       value: ws.stats.total_clicked || 0,
       denominator: ws.stats.total_opened || 0,
@@ -131,6 +126,62 @@ export default function CampaignDashboard({
         ))}
       </div>
 
+      {/* ── Channel-wise Breakdown ──────────────────────────── */}
+      {ws.stats.by_channel && Object.keys(ws.stats.by_channel).some(k => ws.stats.by_channel[k].total_sent > 0) && (
+        <div style={{
+          background: 'var(--bg-card)',
+          border: '1px solid var(--border-subtle)',
+          borderRadius: 'var(--radius-lg)',
+          padding: 16,
+          marginBottom: 12,
+        }}>
+          <div style={{
+            fontSize: 'var(--font-xs)',
+            fontWeight: 600,
+            color: 'var(--text-muted)',
+            textTransform: 'uppercase',
+            letterSpacing: '0.06em',
+            marginBottom: 10,
+          }}>
+            Channel Breakdown
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {Object.entries(ws.stats.by_channel).map(([chan, cStats]) => {
+              if (cStats.total_sent === 0) return null;
+              
+              const labelMap = {
+                sms: 'SMS',
+                whatsapp: 'WhatsApp',
+                email: 'Email',
+                rcs: 'RCS'
+              };
+              const readLabel = chan === 'whatsapp' ? 'read' : (chan === 'email' ? 'opened' : 'opened/read');
+
+              return (
+                <div key={chan} style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  padding: '8px 12px',
+                  borderRadius: 'var(--radius-sm)',
+                  background: 'var(--bg-primary)',
+                  fontSize: 'var(--font-xs)',
+                }}>
+                  <strong style={{ textTransform: 'capitalize', color: 'var(--text-primary)' }}>
+                    {labelMap[chan] || chan}
+                  </strong>
+                  <span style={{ color: 'var(--text-secondary)' }}>
+                    {cStats.total_sent} sent · {cStats.total_delivered} delivered
+                    {chan !== 'sms' && ` · ${cStats.total_opened} ${readLabel}`}
+                    {cStats.total_failed > 0 && ` · ${cStats.total_failed} failed`}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* ── Engagement Funnel ───────────────────────────────── */}
       <EngagementTimeline
         stats={ws.stats}
@@ -158,10 +209,13 @@ export default function CampaignDashboard({
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
             {ws.events.slice(0, 5).map((evt) => {
-              const typeEmoji = {
-                sent: '📨', delivered: '📱', opened: '👀',
-                clicked: '🖱️', failed: '❌',
-              }[evt.type] || '📩';
+              const Icon = {
+                sent: Send,
+                delivered: CheckCircle2,
+                opened: Eye,
+                clicked: MousePointerClick,
+                failed: AlertCircle,
+              }[evt.type] || Mail;
 
               return (
                 <div key={evt.id} style={{
@@ -174,8 +228,9 @@ export default function CampaignDashboard({
                   fontSize: 'var(--font-xs)',
                   animation: 'bubble-in 0.2s ease-out',
                 }}>
-                  <span style={{ color: 'var(--text-secondary)' }}>
-                    {typeEmoji} Message {evt.type}
+                  <span style={{ color: 'var(--text-secondary)', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                    <Icon size={12} style={{ color: 'var(--text-muted)' }} />
+                    Message {evt.type}
                   </span>
                   <span style={{ color: 'var(--text-muted)', fontSize: '0.65rem' }}>
                     {new Date(evt.timestamp).toLocaleTimeString()}
@@ -189,8 +244,9 @@ export default function CampaignDashboard({
 
       {/* ── WebSocket disconnection warning ──────────────────── */}
       {!ws.isConnected && campaignId && (
-        <div className="error-box" style={{ marginBottom: 12 }}>
-          ⚠️ Connection lost. Stats may not update.
+        <div className="error-box" style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <AlertCircle size={14} style={{ color: 'var(--red-500)' }} />
+          <span>Connection lost. Stats may not update.</span>
           <button
             className="btn btn-ghost"
             style={{ marginLeft: 'auto', padding: '4px 12px', fontSize: 'var(--font-xs)' }}
@@ -203,8 +259,8 @@ export default function CampaignDashboard({
 
       {/* ── Action buttons ──────────────────────────────────── */}
       <div className="action-area" style={{ justifyContent: 'center', gap: 12 }}>
-        <button className="btn btn-ghost" onClick={onNewCampaign}>
-          ➕ New Campaign
+        <button className="btn btn-ghost" onClick={onNewCampaign} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+          <Plus size={14} /> New Campaign
         </button>
       </div>
     </div>

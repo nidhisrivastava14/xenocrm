@@ -3,10 +3,12 @@
 // Single message variant card (one of the 3 options)
 // ─────────────────────────────────────────────────────────────
 
+import { Zap, Sparkles, Gift, Smartphone, Mail, MessageSquare, Check } from 'lucide-react';
+
 const TONE_CONFIG = {
-  Urgent:   { emoji: '🔥', badgeClass: 'urgent',   psychology: 'Scarcity & urgency drive immediate action' },
-  Personal: { emoji: '💫', badgeClass: 'personal', psychology: 'Nostalgia & familiarity build emotional connection' },
-  Value:    { emoji: '🎁', badgeClass: 'value',    psychology: 'Exclusivity & savings motivate re-engagement' },
+  Urgent:   { icon: Zap, badgeClass: 'urgent',   psychology: 'Scarcity & urgency drive immediate action' },
+  Personal: { icon: Sparkles, badgeClass: 'personal', psychology: 'Nostalgia & familiarity build emotional connection' },
+  Value:    { icon: Gift, badgeClass: 'value',    psychology: 'Exclusivity & savings motivate re-engagement' },
 };
 
 /**
@@ -18,6 +20,13 @@ const TONE_CONFIG = {
  */
 export default function MessageVariantCard({ variant, selected, recommended, onSelect }) {
   const tone = TONE_CONFIG[variant.tone] || TONE_CONFIG.Urgent;
+  
+  const channelLower = (variant.channel_recommendation?.channel || 'WhatsApp').toLowerCase();
+  const ChannelIcon = {
+    whatsapp: MessageSquare,
+    email: Mail,
+    sms: Smartphone,
+  }[channelLower] || Smartphone;
 
   return (
     <div
@@ -30,8 +39,9 @@ export default function MessageVariantCard({ variant, selected, recommended, onS
     >
       {/* Top row: tone badge + psychology */}
       <div className="variant-top">
-        <span className={`variant-tone-badge ${tone.badgeClass}`}>
-          {tone.emoji} {variant.tone}
+        <span className={`variant-tone-badge ${tone.badgeClass}`} style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+          {tone.icon && <tone.icon size={12} />}
+          {variant.tone}
         </span>
         <span className="variant-psychology">{tone.psychology}</span>
       </div>
@@ -43,8 +53,9 @@ export default function MessageVariantCard({ variant, selected, recommended, onS
 
       {/* Footer: channel + CTA + pick button */}
       <div className="variant-footer">
-        <div className="variant-channel">
-          📱 <strong>{variant.channel_recommendation?.channel || 'WhatsApp'}</strong>
+        <div className="variant-channel" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+          <ChannelIcon size={14} />
+          <strong>{variant.channel_recommendation?.channel || 'WhatsApp'}</strong>
           {' · '}
           {variant.channel_recommendation?.estimated_open_rate || variant.estimated_open_rate || 'N/A'} open rate
         </div>
@@ -56,8 +67,14 @@ export default function MessageVariantCard({ variant, selected, recommended, onS
         <button
           className="variant-pick-btn"
           onClick={(e) => { e.stopPropagation(); onSelect(); }}
+          style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}
         >
-          {selected ? '✓ Selected' : 'Pick'}
+          {selected ? (
+            <>
+              <Check size={12} />
+              Selected
+            </>
+          ) : 'Pick'}
         </button>
       </div>
     </div>

@@ -39,6 +39,9 @@ Output:
 `;
 
 async function extractRFM(userMessage) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 8000);
+
   try {
     console.log("gemini.js\n")
     console.log(`🤖 Gemini extracting RFM from: "${userMessage}"`);
@@ -66,8 +69,11 @@ async function extractRFM(userMessage) {
             responseMimeType: "application/json",
           },
         }),
+        signal: controller.signal,
       },
     );
+
+    clearTimeout(timeoutId);
 
     const data = await response.json();
 
@@ -91,6 +97,7 @@ async function extractRFM(userMessage) {
 
     return params;
   } catch (error) {
+    clearTimeout(timeoutId);
     console.error("GEMINI ERROR:", error);
 
     return {
@@ -101,7 +108,7 @@ async function extractRFM(userMessage) {
       frequency_max: 5,
       monetary_min: 0,
       monetary_max: 10000,
-      reasoning: "Test response - Gemini had an error",
+      reasoning: "Test response - Gemini had an error or timeout",
     };
   }
 }

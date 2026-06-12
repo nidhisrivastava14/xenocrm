@@ -24,7 +24,11 @@ export default function ChatBubbles({ messages, isLoading, children }) {
         <div key={msg.id} className={`bubble-row ${msg.role}`}>
           {/* Avatar */}
           <div className={`bubble-avatar ${msg.role}`}>
-            {msg.role === 'ai' ? '✦' : '⦿'}
+            {msg.role === 'ai' ? (
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275Z"/></svg>
+            ) : (
+              <span style={{ fontSize: '10px', fontWeight: 700 }}>Y</span>
+            )}
           </div>
 
           {/* Bubble */}
@@ -43,7 +47,9 @@ export default function ChatBubbles({ messages, isLoading, children }) {
       {/* Typing indicator */}
       {isLoading && (
         <div className="bubble-row ai">
-          <div className="bubble-avatar ai">✦</div>
+          <div className="bubble-avatar ai">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275Z"/></svg>
+          </div>
           <div className="bubble ai">
             <div className="bubble-label">Xeno AI</div>
             <div className="typing-indicator">

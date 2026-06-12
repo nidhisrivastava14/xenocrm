@@ -17,7 +17,7 @@ const express = require('express');
 const http = require('http');
 const cors = require('cors');
 const { Server } = require('socket.io');
-const { healthCheck } = require('./services/database');
+const { healthCheck, pool, MOCK_CAMPAIGNS } = require('./services/database');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -83,6 +83,64 @@ app.get('/api/health', async (req, res) => {
   }
 });
 
+// Dashboard metrics endpoint
+app.get('/api/dashboard', async (req, res) => {
+  try {
+    if (pool) {
+      // DB Mode
+      const query = `
+        SELECT
+          (SELECT COUNT(*)::INT FROM campaigns) AS total_campaigns,
+          (SELECT COALESCE(SUM(total_sent), 0)::INT FROM campaign_stats) AS total_messages,
+          (SELECT COALESCE(SUM(amount), 0)::NUMERIC(10,2) FROM orders WHERE attributed_campaign_id IS NOT NULL) AS total_revenue,
+          (SELECT COUNT(*)::INT FROM orders WHERE attributed_campaign_id IS NOT NULL) AS total_orders
+      `;
+      const result = await pool.query(query);
+      const row = result.rows[0];
+      return res.json({
+        totalCampaigns: row.total_campaigns,
+        totalMessages: row.total_messages,
+        totalRevenue: parseFloat(row.total_revenue) || 0,
+        totalOrders: row.total_orders,
+      });
+    } else {
+      // Mock Mode
+      const { getMockOrders } = require('./services/attributionService');
+      const { mockStatsStore } = require('./services/webhookService');
+      
+      const totalCampaigns = MOCK_CAMPAIGNS ? MOCK_CAMPAIGNS.length : 0;
+      
+      let totalMessages = 0;
+      if (MOCK_CAMPAIGNS) {
+        for (const c of MOCK_CAMPAIGNS) {
+          const stats = mockStatsStore.get(c.id);
+          if (stats) {
+            totalMessages += stats.total_sent || 0;
+          } else {
+            // fallback default sent numbers for default seeded ones if stats map doesn't have them yet
+            totalMessages += c.id === 'mock-campaign-1' ? 150 : (c.id === 'mock-campaign-2' ? 200 : 80);
+          }
+        }
+      }
+      
+      const allMockOrders = getMockOrders() || [];
+      const attributedOrders = allMockOrders.filter(o => o.attributed_campaign_id !== null);
+      const totalRevenue = attributedOrders.reduce((sum, o) => sum + o.amount, 0);
+      const totalOrders = attributedOrders.length;
+      
+      return res.json({
+        totalCampaigns,
+        totalMessages,
+        totalRevenue,
+        totalOrders,
+      });
+    }
+  } catch (err) {
+    console.error('❌ Dashboard stats fetch error:', err.message);
+    res.status(500).json({ error: 'Failed to fetch dashboard stats' });
+  }
+});
+
 // Chat endpoint (Phase 1b)
 const chatRoutes = require('./routes/chat');
 app.use('/api/chat', chatRoutes);
@@ -103,6 +161,24 @@ app.use('/api/campaigns', campaignRoutes);
 //   - WebSocket broadcast (live dashboard updates)
 const webhookRoutes = require('./routes/webhooks');
 app.use('/api/webhooks', webhookRoutes);
+
+// Orders endpoint (Phase 3 Order Attribution)
+const orderRoutes = require('./routes/orders');
+app.use('/api/orders', orderRoutes);
+
+// Advanced Analytics endpoint
+const analyticsRoutes = require('./routes/analytics');
+app.get('/api/analytics/funnel/:campaignId', analyticsRoutes.getCampaignFunnel);
+app.get('/api/analytics/segments/churn', analyticsRoutes.getChurnSegments);
+
+// Specific catch-all error handler for orders to satisfy strict generic JSON error rules
+app.use('/api/orders', (err, req, res, next) => {
+  console.error('💥 Orders API error:', err);
+  res.status(500).json({
+    success: false,
+    error: 'Something went wrong, please try again',
+  });
+});
 
 // ── 404 handler ───────────────────────────────────────────────
 app.use((req, res) => {
@@ -150,3 +226,5 @@ server.listen(PORT, () => {
   console.log('╚══════════════════════════════════════════════════════╝');
   console.log('');
 });
+
+module.exports = app;

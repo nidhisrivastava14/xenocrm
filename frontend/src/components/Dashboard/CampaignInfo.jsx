@@ -3,6 +3,7 @@
 // Campaign header — segment name, channel, tone, status badge
 // ─────────────────────────────────────────────────────────────
 
+import { MessageSquare, Mail, Smartphone, Target, Zap, Sparkles, Gift, Users, Clock } from 'lucide-react';
 import { getCampaignStatus, getHealthColor } from '../../utils/calculations';
 
 /**
@@ -27,19 +28,18 @@ export default function CampaignInfo({
   isConnected,
 }) {
   const status = getCampaignStatus(stats, totalCustomers);
-  const healthColor = getHealthColor(stats.total_delivered || 0, totalCustomers);
 
-  const channelEmoji = {
-    whatsapp: '💬',
-    email: '📧',
-    sms: '📱',
-  }[channel] || '📨';
+  const ChannelIcon = {
+    whatsapp: MessageSquare,
+    email: Mail,
+    sms: Smartphone,
+  }[channel] || Mail;
 
-  const toneEmoji = {
-    Urgent: '🔥',
-    Personal: '💫',
-    Value: '🎁',
-  }[tone] || '✉️';
+  const ToneIcon = {
+    Urgent: Zap,
+    Personal: Sparkles,
+    Value: Gift,
+  }[tone] || Mail;
 
   const formattedDate = createdAt
     ? new Date(createdAt).toLocaleString('en-IN', {
@@ -66,8 +66,9 @@ export default function CampaignInfo({
             {segmentName || 'Campaign'}
           </div>
           {persona && (
-            <span className="segment-badge" style={{ marginTop: 4, display: 'inline-flex' }}>
-              🎯 {persona}
+            <span className="segment-badge" style={{ marginTop: 4, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+              <Target size={12} />
+              {persona}
             </span>
           )}
         </div>
@@ -106,12 +107,31 @@ export default function CampaignInfo({
         fontSize: 'var(--font-xs)',
         color: 'var(--text-muted)',
       }}>
-        <span>{channelEmoji} {channel}</span>
-        <span>{toneEmoji} {tone || 'Default'} tone</span>
-        <span>👥 {totalCustomers} customers</span>
-        <span>🕐 {formattedDate}</span>
-        <span style={{ color: isConnected ? 'var(--green-500)' : 'var(--text-muted)' }}>
-          {isConnected ? '● Live' : '○ Offline'}
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+          <ChannelIcon size={12} />
+          {channel}
+        </span>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+          <ToneIcon size={12} />
+          {tone || 'Default'} tone
+        </span>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+          <Users size={12} />
+          {totalCustomers} customers
+        </span>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+          <Clock size={12} />
+          {formattedDate}
+        </span>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', color: isConnected ? 'var(--green-500)' : 'var(--text-muted)' }}>
+          <span style={{
+            width: 6,
+            height: 6,
+            borderRadius: '50%',
+            background: isConnected ? 'var(--green-500)' : 'var(--text-muted)',
+            display: 'inline-block'
+          }} />
+          {isConnected ? 'Live' : 'Offline'}
         </span>
       </div>
     </div>
